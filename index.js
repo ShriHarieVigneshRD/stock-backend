@@ -26,6 +26,11 @@ app.use('/portfolio', portfolioRouter);
 app.use('/watchlist', watchlistRouter);
 app.use('/user', userRoutes);
 
+app.get('/', (req, res) => {
+  res.send('✅ Backend running on Railway!');
+});
+
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
