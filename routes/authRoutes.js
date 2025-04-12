@@ -1,5 +1,5 @@
 import express from 'express';
-import { connectToDatabase } from '../lib/db.js';
+import { getConnection } from '../lib/db.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
@@ -10,7 +10,6 @@ const validateRegistration = (req, res) => {
     const errors = [];
     const { username, email, password } = req.body;
 
-    // Username validation
     if (typeof username !== "string" || !username.trim()) {
         errors.push("Username is required.");
     } else {
@@ -19,7 +18,6 @@ const validateRegistration = (req, res) => {
         if (!username.match(/^[a-zA-Z0-9]+$/)) errors.push("Username can only contain letters and numbers.");
     }
 
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (typeof email !== "string" || !email.trim()) {
         errors.push("Email is required.");
@@ -27,7 +25,6 @@ const validateRegistration = (req, res) => {
         errors.push("Invalid email format.");
     }
 
-    // Password validation
     if (typeof password !== "string" || !password.trim()) {
         errors.push("Password is required.");
     } else {
@@ -41,15 +38,13 @@ const validateRegistration = (req, res) => {
 // Registration Route
 router.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
-
-    // Validate input
     const errors = validateRegistration(req, res);
     if (errors.length > 0) {
         return res.status(400).json({ errors });
     }
 
     try {
-        const db = await connectToDatabase();
+        const db = await getConnection();
         const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (rows.length > 0) {
             return res.status(409).json({ message: "User already exists." });
@@ -69,13 +64,12 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
-    // Basic login validation
     if (!email || !password) {
         return res.status(400).json({ message: "Email and password are required." });
     }
 
     try {
-        const db = await connectToDatabase();
+        const db = await getConnection();
         const [rows] = await db.query('SELECT * FROM users WHERE email = ?', [email]);
         if (rows.length === 0) {
             return res.status(404).json({ message: "User does not exist." });
@@ -86,7 +80,7 @@ router.post('/login', async (req, res) => {
         }
         const token = jwt.sign({ id: rows[0].id }, process.env.JWT_KEY, { expiresIn: '3h' });
 
-        return res.status(201).json({ token: token,id:rows[0].id });
+        return res.status(201).json({ token: token, id: rows[0].id });
     } catch (err) {
         return res.status(500).json(err.message);
     }
@@ -107,69 +101,29 @@ const verifyToken = async (req, res, next) => {
     }
 };
 
-// Authenticated Route for Home
-router.get('/home', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
+// Authenticated Routes (Home, Watchlist, etc.)
+const authenticatedRoutes = [
+    '/home', '/watchlist', '/portfolio', '/stockindices', '/about', '/profile', '/history'
+];
+
+authenticatedRoutes.forEach((path) => {
+    router.get(path, verifyToken, async (req, res) => {
+        try {
+            const db = await getConnection();
+            const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
+            if (rows.length === 0) {
+                return res.status(404).json({ message: "User does not exist." });
+            }
+
+            return res.status(201).json({ user: rows[0] });
+        } catch (err) {
+            return res.status(500).json({ message: "Server error." });
         }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-// Authenticated Route for Watchlist
-router.get('/watchlist', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-// Authenticated Route for Portfolio
-router.get('/portfolio', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-// Authenticated Route for Stockindices
-router.get('/stockindices', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
+    });
 });
 
 router.post('/logout', verifyToken, (req, res) => {
     try {
-        // Invalidate token on the frontend (server doesn't store tokens)
         return res.status(200).json({ message: "Logged out successfully." });
     } catch (err) {
         return res.status(500).json({ message: "Server error." });
@@ -178,56 +132,13 @@ router.post('/logout', verifyToken, (req, res) => {
 
 router.get('/details/:indexId', verifyToken, async (req, res) => {
     try {
-        const db = await connectToDatabase();
+        const db = await getConnection();
         const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-
         if (rows.length === 0) {
             return res.status(404).json({ message: "User does not exist." });
         }
 
         return res.status(200).json({ message: "Authorized to access details page." });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-router.get('/about', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-router.get('/profile', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
-    } catch (err) {
-        return res.status(500).json({ message: "Server error." });
-    }
-});
-
-router.get('/history', verifyToken, async (req, res) => {
-    try {
-        const db = await connectToDatabase();
-        const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [req.userId]);
-        if (rows.length === 0) {
-            return res.status(404).json({ message: "User does not exist." });
-        }
-
-        return res.status(201).json({ user: rows[0] });
     } catch (err) {
         return res.status(500).json({ message: "Server error." });
     }

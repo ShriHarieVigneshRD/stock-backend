@@ -1,8 +1,8 @@
-import { connectToDatabase } from '../lib/db.js';
+import { getConnection } from '../lib/db.js';
 import bcrypt from 'bcrypt';
 
 export const getProfile = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) return res.status(500).json({ message: "Database connection failed" });
 
     try {
@@ -22,11 +22,13 @@ export const getProfile = async (req, res) => {
     } catch (error) {
         console.error("Error fetching profile:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const updateUsername = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) return res.status(500).json({ message: "Database connection failed" });
 
     try {
@@ -53,11 +55,13 @@ export const updateUsername = async (req, res) => {
     } catch (error) {
         console.error("Error updating username:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const updatePassword = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) return res.status(500).json({ message: "Database connection failed" });
 
     try {
@@ -90,11 +94,13 @@ export const updatePassword = async (req, res) => {
     } catch (error) {
         console.error("Error updating password:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const deleteAccount = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) return res.status(500).json({ message: "Database connection failed" });
 
     try {
@@ -103,7 +109,8 @@ export const deleteAccount = async (req, res) => {
 
         await db.beginTransaction();
 
-        await db.execute('DELETE FROM portfolio WHERE user_id = ?', [user_id]);
+        await db.execute('DELETE FROM user_portfolio WHERE user_id = ?', [user_id]);
+        await db.execute('DELETE FROM transaction_history WHERE user_id = ?', [user_id]);
         const [result] = await db.execute('DELETE FROM users WHERE id = ?', [user_id]);
 
         if (result.affectedRows === 0) {
@@ -117,5 +124,7 @@ export const deleteAccount = async (req, res) => {
         if (db) await db.rollback();
         console.error("Error deleting account:", error);
         res.status(500).json({ message: error.message || "Failed to delete account" });
+    } finally {
+        db.release();
     }
 };

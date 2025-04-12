@@ -1,14 +1,15 @@
-// portfolioController.js
-import { connectToDatabase } from '../lib/db.js';
+import { getConnection } from '../lib/db.js';
 
 export const buyAsset = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) {
         return res.status(500).json({ message: "Database connection failed" });
     }
+
     try {
         const { user_id, asset_symbol, asset_name, quantity, price } = req.body;
         if (!user_id || !asset_symbol || !asset_name || !quantity || !price) {
+            db.release();
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -31,17 +32,21 @@ export const buyAsset = async (req, res) => {
     } catch (error) {
         console.error("Error in buyAsset:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const sellAsset = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) {
         return res.status(500).json({ message: "Database connection failed" });
     }
+
     try {
         const { user_id, asset_symbol, quantity, price } = req.body;
         if (!user_id || !asset_symbol || !quantity || !price || quantity <= 0) {
+            db.release();
             return res.status(400).json({ message: "Invalid request parameters" });
         }
 
@@ -51,11 +56,13 @@ export const sellAsset = async (req, res) => {
         );
 
         if (rows.length === 0) {
+            db.release();
             return res.status(404).json({ message: "Asset not found in portfolio" });
         }
 
         const currentQuantity = parseFloat(rows[0].quantity);
         if (quantity > currentQuantity) {
+            db.release();
             return res.status(400).json({ message: "Sell quantity exceeds holdings" });
         }
 
@@ -80,11 +87,13 @@ export const sellAsset = async (req, res) => {
     } catch (error) {
         console.error("Error in sellAsset:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const getStocks = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) {
         return res.status(500).json({ message: "Database connection failed" });
     }
@@ -92,6 +101,7 @@ export const getStocks = async (req, res) => {
     try {
         const { user_id } = req.body;
         if (!user_id) {
+            db.release();
             return res.status(400).json({ message: "User ID is required" });
         }
 
@@ -102,17 +112,21 @@ export const getStocks = async (req, res) => {
     } catch (error) {
         console.error("Error fetching portfolio:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
 
 export const getTransactionHistory = async (req, res) => {
-    const db = await connectToDatabase();
+    const db = await getConnection();
     if (!db) {
         return res.status(500).json({ message: "Database connection failed" });
     }
+
     try {
         const { user_id, sort = 'DESC', filter = 'ALL' } = req.body;
         if (!user_id) {
+            db.release();
             return res.status(400).json({ message: "User ID is required" });
         }
 
@@ -126,9 +140,12 @@ export const getTransactionHistory = async (req, res) => {
 
         query += ` ORDER BY transaction_date ${sort === 'ASC' ? 'ASC' : 'DESC'}`;
         const [rows] = await db.execute(query, params);
+
         res.status(200).json(rows);
     } catch (error) {
         console.error("Error fetching transaction history:", error);
         res.status(500).json({ message: "Server error" });
+    } finally {
+        db.release();
     }
 };
